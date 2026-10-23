@@ -14,7 +14,7 @@ const defaultTransactions = [
    date : new Date().toISOString(),
    accountID: checking.id,
    type:"deposit",
-   ampount:1000,
+   amount:1000,
    description: "Initial deposit"
     },
 
@@ -23,7 +23,7 @@ const defaultTransactions = [
    date : new Date().toISOString(),
    accountID: savings.id,
    type:"Deposit",
-   ampount:500,
+   amount:500,
    description: "Initial savings"
     }
 
@@ -154,3 +154,90 @@ if(confirm("Reset all data back to original state?")){
 
         showAlert('Data reset successfully', 'success');
 }
+
+
+// MODULE 3: VALIDATION & TRANSACTION PROCESSING LOGIC
+
+function handleDepositSubmission(){
+    const accountType = document.querySelector('#depositAccount').value;
+    const amountType = parseFloat(accountType);
+    const description = document.querySelector('#depositAccount').value||"Direct Deposit";
+
+   if(document.getElementById("depositAmount").value.trim() === "" || !Number.isFinite(amount) || amount <= 0){
+    showAlert("Please enter a valid deposit amount greater than $0.00", "error")
+      return;
+   }
+
+
+    if(!account[accountType]){
+        showAlert('Please select a valid account');
+    }
+
+    account[accountType].balance += amount;
+
+    const newTransaction ={
+        id:crypto.randomUUID(),
+        date:new Date().toISOString(),      
+        accountID:account[accountType].id,
+        type:"deposit",
+       amount:amount,
+       description:description
+    }
+    transactions.unshift(newTransaction);
+
+    const accountSaved =( STORAGE_KEY_ACCOUNTS,
+    defaultAccount);
+    const transactionSaved =(STORAGE_KEY_TRANSACTIONS,
+    defaultTransactions);
+
+    renderAllUI();
+    if(accountSaved && transactionSaved){
+        showAlert("Transasction was succesful")
+    }else{
+        console.error("TRANSACTION FAAILED, TRY AGAIN !");
+    }
+
+    }
+
+    //WITHDRAWAL LOGIC 
+    function andleWithdrawalSubmission(){
+        const accountType = document.getElementById('#withdrawAccount');
+        const amountyType = document.getElementById('#withdrawAmount').value;
+        const description = document.getElementById('#withdrawAmount').value || "Withdrawal";
+
+        if(document.getElementById('#withdrawAmount').value.trim() === "" || !Number.isFinite(amount) || amount <= 0){
+        
+            showAlert("Please enter a valid withdrawal amount", "error");
+            return;
+        };
+
+        const currentBalance = accounts[accountType].balance;
+        if(amount >currentBalance ){
+            showAlert("Insuffficient funds");
+        }
+
+        accounts[accountType].balance-= amount;
+        
+        const newTransaction = {
+            id: crypto.randomUUID(),
+            accountID:accounts[accountType],
+            amount:amount,
+            description:description,
+            typoe:"withdwraw",
+            date:new Date().toISOString()
+        }
+        transaction.unshift(newTransaction);
+
+        renderAllUI()
+            const accountSaved =( STORAGE_KEY_ACCOUNTS,
+    defaultAccount);
+    const transactionSaved =(STORAGE_KEY_TRANSACTIONS,
+    defaultTransactions);
+  
+    if (accountSaved && transactionSaved) {
+     showAlert(`Successfully withdrew $${amount.toFixed(2)} from ${accounts[accountType].name}`, "success")
+    
+    }else{
+       console.error("Insufficient funds")
+    }
+    }
