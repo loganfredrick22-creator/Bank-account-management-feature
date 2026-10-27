@@ -1,243 +1,373 @@
-// MODULE 1: STATE MANAGEMENT & LOCAL STORAGE PERSISTENCE
-const STORAGE_KEY_ACCOUNTS = "apex_bank_accounts";
-const STORAGE_KEY_TRANSACTIONS = "apex_bank_transactions";
+/**
+ * APEX GLOBAL BANK - APPLICATION LOGIC
+ * Runs entirely in the browser using HTML5 localStorage.
+ */
 
-const defaultAccount={
-    checking: { id: "checking", name: "Checking Account", number: "4821", balance: 2500.00 },
-    savings: { id: "savings", name: "High-Yield Savings", number: "9033", balance: 10000.00 }
-}
-//Default transaction data
+document.addEventListener('DOMContentLoaded', () => {
+  // ==========================================================================
+  // MODULE 1: CONSTANTS & STATE MANAGEMENT
+  // ==========================================================================
+  const STORAGE_KEY_ACCOUNTS = 'apex_bank_accounts';
+  const STORAGE_KEY_TRANSACTIONS = 'apex_bank_transactions';
 
-const defaultTransactions = [
-    {
-   id : crypto.randomUUID(),
-   date : new Date().toISOString(),
-   accountID: checking.id,
-   type:"deposit",
-   amount:1000,
-   description: "Initial deposit"
-    },
+  const DEFAULT_ACCOUNTS = {
+    checking: { id: 'checking', name: 'Checking Account', number: '4821', balance: 2500.00 },
+    savings: { id: 'savings', name: 'High-Yield Savings', number: '9033', balance: 10000.00 }
+  };
 
-    {
-   id:crypto.randomUUID(),
-   date : new Date().toISOString(),
-   accountID: savings.id,
-   type:"Deposit",
-   amount:500,
-   description: "Initial savings"
+  const DEFAULT_TRANSACTIONS = [
+    { id: 'TX1002', date: new Date(Date.now() - 86400000).toISOString(), account: 'savings', type: 'DEPOSIT', amount: 10000.00, description: 'Initial Savings Deposit' },
+    { id: 'TX1001', date: new Date(Date.now() - 172800000).toISOString(), account: 'checking', type: 'DEPOSIT', amount: 2500.00, description: 'Initial Checking Balance' }
+  ];
+
+  let APP_STATE = {
+    accounts: {},
+    transactions: []
+  };
+
+  let alertTimeout = null;
+
+  function loadStateFromLocalStorage() {
+    try {
+      const accountsData = localStorage.getItem(STORAGE_KEY_ACCOUNTS);
+      const transactionsData = localStorage.getItem(STORAGE_KEY_TRANSACTIONS);
+
+      if (accountsData && transactionsData) {
+        APP_STATE.accounts = JSON.parse(accountsData);
+        APP_STATE.transactions = JSON.parse(transactionsData);
+      } else {
+        initializeDefaultState();
+      }
+    } catch (error) {
+      console.warn('Storage read error, loading default state:', error);
+      initializeDefaultState();
     }
-
-
-];
-//Local storage logic
-
-function loadData(storageKey, defaultData){
- try{
-   const savedData = localStorage.getItem(storageKey);
-   if(savedData === null){
-       return structuredClone(defaultData);
-   }
-   return JSON.parse(savedData);
- } catch{
-  console.error(`Failed to load ${storageKey}:`, error);
-
-        return structuredClone(defaultData);
-    }
-}
-
-// 5. INITIALIZE APPLICATION STATE
-const accounts = loadData(
-    STORAGE_KEY_ACCOUNTS,
-    defaultAccount
-);
-
-const transactions = loadData(
-    STORAGE_KEY_TRANSACTIONS,
-    defaultTransactions
-);
-
-
-// 6. SAVE DATA TO LOCAL STORAGE
-function storeData(storageKey, data){
-  try{
-  localStorage.setItem(storageKey,JSON.stringify(data));
-  return true;
-  }catch{
-    console.error("Failed to save${storageKey}:", error);
-    return false;
   }
 
-}
+  function initializeDefaultState() {
+    APP_STATE.accounts = JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS));
+    APP_STATE.transactions = JSON.parse(JSON.stringify(DEFAULT_TRANSACTIONS));
+    saveStateToLocalStorage();
+  }
 
-if(localStorage.getItem(STORAGE_KEY_ACCOUNTS)=== null){
-  saveData(STORAGE_KEY_ACCOUNTS,accounts);
-}
+  function saveStateToLocalStorage() {
+    localStorage.setItem(STORAGE_KEY_ACCOUNTS, JSON.stringify(APP_STATE.accounts));
+    localStorage.setItem(STORAGE_KEY_TRANSACTIONS, JSON.stringify(APP_STATE.transactions));
+  }
 
-if(localStorage.getItem(STORAGE_KEY_TRANSACTIONS) === null){
-    saveData(STORAGE_KEY_TRANSACTIONS, transactions);
-}
+  // ==========================================================================
+  // MODULE 2: UI UTILITIES & ALERTS
+  // ==========================================================================
+  function formatCurrency(amount) {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount);
+  }
 
-function initializeEventListeners(){
-  const tabButtons = document.querySelector('#actionTabs .tab-btn');
- tabButtons.forEach(element => {
-    element.addEventListener('click',()=>{
-      tabButtons.forEach(button =>{
-        button.classList.remove('active');
-      }
-      
-       )
+  function formatDate(isoString) {
+    const date = new Date(isoString);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     });
-     element.classList.add('active');
-      const  targetFormId=tabButton.getAttribute('data-tab');
-      const forms = document.querySelectorAll('.tab-content form');
-      forms.forEach(form => {
-        form.style.display ='none';
+  }
 
-        if(targetFormId){
-        forms.style.display ='block';
-     }
-     });
-     
- });
+  function escapeHTML(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
 
-}
+  function showAlert(message, type = 'success') {
+    const alertBox = document.getElementById('alertContainer');
+    if (!alertBox) return;
 
-//FORM SUBMISSION LISTENERS
-// 1. SELECT THE FORMS
+    alertBox.textContent = message;
+    alertBox.className = `alert-container alert-${type}`;
 
-const depositForm = document.getElementById('depositForm');
-const withdrawForm = document.getElementById('withdrawForm');
-const transferForm = document.getElementById('transferForm');
+    if (alertTimeout) clearTimeout(alertTimeout);
 
+    alertTimeout = setTimeout(() => {
+      alertBox.classList.add('hidden');
+    }, 4000);
+  }
 
-// 2. DEPOSIT FORM SUBMISSION
+  function generateTransactionId() {
+    return 'TX' + Math.floor(100000 + Math.random() * 900000);
+  }
 
-depositForm.addEventListener('submit', function(event) {
-    event.preventDefault();
+  // ==========================================================================
+  // MODULE 3: UI RENDER FUNCTIONS
+  // ==========================================================================
+  function renderAllUI() {
+    renderDashboardMetrics();
+    renderAccountBalances();
+    renderTransactionLedger();
+  }
 
-    handleDepositSubmission();
-});
+  function renderDashboardMetrics() {
+    const checkingBal = APP_STATE.accounts.checking?.balance || 0;
+    const savingsBal = APP_STATE.accounts.savings?.balance || 0;
+    const totalBalance = checkingBal + savingsBal;
 
+    let totalInflow = 0;
+    let totalOutflow = 0;
 
-// 3. WITHDRAWAL FORM SUBMISSION
+    APP_STATE.transactions.forEach(tx => {
+      if (tx.type === 'DEPOSIT' || tx.type === 'TRANSFER_IN') {
+        totalInflow += tx.amount;
+      } else if (tx.type === 'WITHDRAWAL' || tx.type === 'TRANSFER_OUT') {
+        totalOutflow += tx.amount;
+      }
+    });
 
-withdrawForm.addEventListener('submit', function(event) {
-    event.preventDefault();
+    document.getElementById('totalBalance').textContent = formatCurrency(totalBalance);
+    document.getElementById('activeAccountsCount').textContent = Object.keys(APP_STATE.accounts).length;
+    document.getElementById('totalInflow').textContent = formatCurrency(totalInflow);
+    document.getElementById('totalOutflow').textContent = formatCurrency(totalOutflow);
+  }
 
-    handleWithdrawalSubmission();
-});
+  function renderAccountBalances() {
+    document.getElementById('checkingBalance').textContent = formatCurrency(APP_STATE.accounts.checking.balance);
+    document.getElementById('savingsBalance').textContent = formatCurrency(APP_STATE.accounts.savings.balance);
+  }
 
+  function renderTransactionLedger() {
+    const filterValue = document.getElementById('ledgerFilter').value;
+    const tableBody = document.getElementById('ledgerTableBody');
+    const emptyMessage = document.getElementById('emptyLedgerMessage');
 
-// 4. TRANSFER FORM SUBMISSION
+    tableBody.innerHTML = '';
 
-transferForm.addEventListener('submit', function(event) {
-    event.preventDefault();
+    const filteredTransactions = APP_STATE.transactions.filter(tx => {
+      if (filterValue === 'all') return true;
+      return tx.account === filterValue;
+    });
 
-    handleTransferSubmission();
-});
-//FILTER & RESET LISTENERS
+    if (filteredTransactions.length === 0) {
+      emptyMessage.classList.remove('hidden');
+      return;
+    } else {
+      emptyMessage.classList.add('hidden');
+    }
 
-const ledgerFilterSelect = document.querySelector('#ledger-filter');
+    filteredTransactions.forEach(tx => {
+      const isNegative = tx.type === 'WITHDRAWAL' || tx.type === 'TRANSFER_OUT';
+      const amountClass = isNegative ? 'text-danger' : 'text-success';
+      const amountPrefix = isNegative ? '-' : '+';
+      const accountName = APP_STATE.accounts[tx.account]?.name || tx.account;
 
-ledgerFilterSelect.addEventListener('change', () => {
-    const selectedFilter = ledgerFilterSelect.value;
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${formatDate(tx.date)}</td>
+        <td><code>${tx.id}</code></td>
+        <td>${escapeHTML(accountName)}</td>
+        <td><strong class="${amountClass}">${tx.type}</strong></td>
+        <td>${escapeHTML(tx.description)}</td>
+        <td class="text-right ${amountClass}"><strong>${amountPrefix}${formatCurrency(tx.amount)}</strong></td>
+      `;
+      tableBody.appendChild(row);
+    });
+  }
 
-    renderLedger(selectedFilter);
-});
+  // ==========================================================================
+  // MODULE 4: TRANSACTION HANDLERS & VALIDATION
+  // ==========================================================================
+  function handleDepositSubmission(e) {
+    e.preventDefault();
+    const accountType = document.getElementById('depositAccount').value;
+    const amountInput = document.getElementById('depositAmount');
+    const descInput = document.getElementById('depositDescription');
 
-if(confirm("Reset all data back to original state?")){
-        localStorage.removeItem(STORAGE_KEY_ACCOUNTS);
-        localStorage.removeItem(STORAGE_KEY_TRANSACTIONS);
+    const amount = parseFloat(amountInput.value);
+    const description = descInput.value.trim() || 'Direct Deposit';
 
+    if (isNaN(amount) || amount <= 0) {
+      showAlert('Please enter a valid deposit amount greater than $0.00', 'error');
+      return;
+    }
+
+    // Process State Update
+    APP_STATE.accounts[accountType].balance += amount;
+
+    const newTx = {
+      id: generateTransactionId(),
+      date: new Date().toISOString(),
+      account: accountType,
+      type: 'DEPOSIT',
+      amount: amount,
+      description: description
+    };
+
+    APP_STATE.transactions.unshift(newTx);
+    saveStateToLocalStorage();
+    renderAllUI();
+
+    showAlert(`Successfully deposited ${formatCurrency(amount)} into ${APP_STATE.accounts[accountType].name}.`, 'success');
+    e.target.reset();
+  }
+
+  function handleWithdrawalSubmission(e) {
+    e.preventDefault();
+    const accountType = document.getElementById('withdrawAccount').value;
+    const amountInput = document.getElementById('withdrawAmount');
+    const descInput = document.getElementById('withdrawDescription');
+
+    const amount = parseFloat(amountInput.value);
+    const description = descInput.value.trim() || 'Withdrawal';
+
+    if (isNaN(amount) || amount <= 0) {
+      showAlert('Please enter a valid withdrawal amount greater than $0.00', 'error');
+      return;
+    }
+
+    const currentBalance = APP_STATE.accounts[accountType].balance;
+    if (amount > currentBalance) {
+      showAlert(`Transaction declined! Insufficient funds in ${APP_STATE.accounts[accountType].name} (${formatCurrency(currentBalance)} available).`, 'error');
+      return;
+    }
+
+    // Process State Update
+    APP_STATE.accounts[accountType].balance -= amount;
+
+    const newTx = {
+      id: generateTransactionId(),
+      date: new Date().toISOString(),
+      account: accountType,
+      type: 'WITHDRAWAL',
+      amount: amount,
+      description: description
+    };
+
+    APP_STATE.transactions.unshift(newTx);
+    saveStateToLocalStorage();
+    renderAllUI();
+
+    showAlert(`Successfully withdrew ${formatCurrency(amount)} from ${APP_STATE.accounts[accountType].name}.`, 'success');
+    e.target.reset();
+  }
+
+  function handleTransferSubmission(e) {
+    e.preventDefault();
+    const fromAccount = document.getElementById('transferFrom').value;
+    const toAccount = document.getElementById('transferTo').value;
+    const amountInput = document.getElementById('transferAmount');
+    const descInput = document.getElementById('transferDescription');
+
+    const amount = parseFloat(amountInput.value);
+    const memo = descInput.value.trim();
+
+    if (fromAccount === toAccount) {
+      showAlert('Transfer source and destination accounts must be different.', 'error');
+      return;
+    }
+
+    if (isNaN(amount) || amount <= 0) {
+      showAlert('Please enter a valid transfer amount greater than $0.00', 'error');
+      return;
+    }
+
+    const sourceBalance = APP_STATE.accounts[fromAccount].balance;
+    if (amount > sourceBalance) {
+      showAlert(`Transfer declined! Insufficient funds in ${APP_STATE.accounts[fromAccount].name}.`, 'error');
+      return;
+    }
+
+    // Process State Updates
+    APP_STATE.accounts[fromAccount].balance -= amount;
+    APP_STATE.accounts[toAccount].balance += amount;
+
+    const baseTxId = generateTransactionId();
+    const memoSuffix = memo ? ` - ${memo}` : '';
+
+    const transferOutTx = {
+      id: baseTxId + 'A',
+      date: new Date().toISOString(),
+      account: fromAccount,
+      type: 'TRANSFER_OUT',
+      amount: amount,
+      description: `Transfer to ${APP_STATE.accounts[toAccount].name}${memoSuffix}`
+    };
+
+    const transferInTx = {
+      id: baseTxId + 'B',
+      date: new Date().toISOString(),
+      account: toAccount,
+      type: 'TRANSFER_IN',
+      amount: amount,
+      description: `Transfer from ${APP_STATE.accounts[fromAccount].name}${memoSuffix}`
+    };
+
+    APP_STATE.transactions.unshift(transferOutTx, transferInTx);
+    saveStateToLocalStorage();
+    renderAllUI();
+
+    showAlert(`Successfully transferred ${formatCurrency(amount)} from ${APP_STATE.accounts[fromAccount].name} to ${APP_STATE.accounts[toAccount].name}.`, 'success');
+    e.target.reset();
+  }
+
+  // ==========================================================================
+  // MODULE 5: EVENT LISTENERS & SETUP
+  // ==========================================================================
+  function setupEventListeners() {
+    // 1. Navigation Tab Switching (Sidebar & Smooth Scroll)
+    const sidebarLinks = document.querySelectorAll('.sidebar-nav .nav-link');
+    sidebarLinks.forEach(link => {
+      link.addEventListener('click', (e) => {
+        sidebarLinks.forEach(l => l.classList.remove('active'));
+        link.classList.add('active');
+      });
+    });
+
+    // 2. Transact Action Tab Switching
+    const tabButtons = document.querySelectorAll('#actionTabs .tab-btn');
+    const forms = document.querySelectorAll('.transaction-form');
+
+    tabButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        tabButtons.forEach(btn => btn.classList.remove('active'));
+        button.classList.add('active');
+
+        const targetFormId = button.getAttribute('data-tab');
+        forms.forEach(form => {
+          if (form.id === targetFormId) {
+            form.classList.remove('hidden-form');
+            form.classList.add('active-form');
+          } else {
+            form.classList.remove('active-form');
+            form.classList.add('hidden-form');
+          }
+        });
+      });
+    });
+
+    // 3. Form Submissions
+    document.getElementById('depositForm').addEventListener('submit', handleDepositSubmission);
+    document.getElementById('withdrawForm').addEventListener('submit', handleWithdrawalSubmission);
+    document.getElementById('transferForm').addEventListener('submit', handleTransferSubmission);
+
+    // 4. Ledger Filter
+    document.getElementById('ledgerFilter').addEventListener('change', renderTransactionLedger);
+
+    // 5. Reset Data Button
+    document.getElementById('resetDataBtn').addEventListener('click', () => {
+      if (confirm('Are you sure you want to reset all accounts and transaction history back to defaults?')) {
+        localStorage.clear();
         initializeDefaultState();
         renderAllUI();
+        showAlert('Application state has been reset to defaults.', 'success');
+      }
+    });
+  }
 
-        showAlert('Data reset successfully', 'success');
-}
-
-
-// MODULE 3: VALIDATION & TRANSACTION PROCESSING LOGIC
-
-function handleDepositSubmission(){
-    const accountType = document.querySelector('#depositAccount').value;
-    const amountType = parseFloat(accountType);
-    const description = document.querySelector('#depositAccount').value||"Direct Deposit";
-
-   if(document.getElementById("depositAmount").value.trim() === "" || !Number.isFinite(amount) || amount <= 0){
-    showAlert("Please enter a valid deposit amount greater than $0.00", "error")
-      return;
-   }
-
-
-    if(!account[accountType]){
-        showAlert('Please select a valid account');
-    }
-
-    account[accountType].balance += amount;
-
-    const newTransaction ={
-        id:crypto.randomUUID(),
-        date:new Date().toISOString(),      
-        accountID:account[accountType].id,
-        type:"deposit",
-       amount:amount,
-       description:description
-    }
-    transactions.unshift(newTransaction);
-
-    const accountSaved =( STORAGE_KEY_ACCOUNTS,
-    defaultAccount);
-    const transactionSaved =(STORAGE_KEY_TRANSACTIONS,
-    defaultTransactions);
-
-    renderAllUI();
-    if(accountSaved && transactionSaved){
-        showAlert("Transasction was succesful")
-    }else{
-        console.error("TRANSACTION FAAILED, TRY AGAIN !");
-    }
-
-    }
-
-    //WITHDRAWAL LOGIC 
-    function andleWithdrawalSubmission(){
-        const accountType = document.getElementById('#withdrawAccount');
-        const amountyType = document.getElementById('#withdrawAmount').value;
-        const description = document.getElementById('#withdrawAmount').value || "Withdrawal";
-
-        if(document.getElementById('#withdrawAmount').value.trim() === "" || !Number.isFinite(amount) || amount <= 0){
-        
-            showAlert("Please enter a valid withdrawal amount", "error");
-            return;
-        };
-
-        const currentBalance = accounts[accountType].balance;
-        if(amount >currentBalance ){
-            showAlert("Insuffficient funds");
-        }
-
-        accounts[accountType].balance-= amount;
-        
-        const newTransaction = {
-            id: crypto.randomUUID(),
-            accountID:accounts[accountType],
-            amount:amount,
-            description:description,
-            typoe:"withdwraw",
-            date:new Date().toISOString()
-        }
-        transaction.unshift(newTransaction);
-
-        renderAllUI()
-            const accountSaved =( STORAGE_KEY_ACCOUNTS,
-    defaultAccount);
-    const transactionSaved =(STORAGE_KEY_TRANSACTIONS,
-    defaultTransactions);
-  
-    if (accountSaved && transactionSaved) {
-     showAlert(`Successfully withdrew $${amount.toFixed(2)} from ${accounts[accountType].name}`, "success")
-    
-    }else{
-       console.error("Insufficient funds")
-    }
-    }
+  // ==========================================================================
+  // INITIALIZATION ENTRY POINT
+  // ==========================================================================
+  loadStateFromLocalStorage();
+  setupEventListeners();
+  renderAllUI();
+});
